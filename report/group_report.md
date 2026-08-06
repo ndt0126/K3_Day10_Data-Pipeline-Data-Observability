@@ -14,12 +14,12 @@
 ### Thành viên và phân công
 
 | STT | Họ và tên | MSSV | Vai trò chính | Module/deliverable sở hữu |
-| --: | --- | --- | --- | --- |
-| 1 | [Họ tên] | [MSSV] | [Vai trò] | [File, hàm hoặc artifact] |
-| 2 | [Họ tên] | [MSSV] | [Vai trò] | [File, hàm hoặc artifact] |
-| 3 | [Họ tên] | [MSSV] | [Vai trò] | [File, hàm hoặc artifact] |
-| 4 | [Nếu có] | [MSSV] | [Vai trò] | [File, hàm hoặc artifact] |
-| 5 | [Nếu có] | [MSSV] | [Vai trò] | [File, hàm hoặc artifact] |
+| --: | ------------ | ------ | --------------- | --------------------------- |
+| 1 | Nguyễn Đức Trung | 2A202601725 | Trưởng nhóm (Pipeline Integrator) | `src/core/config.py`, `src/pipelines/phase1.py`, `src/pipelines/corruption_flow.py`, `group_report.md` |
+| 2 | Nguyễn Tuấn Nam | 2A202602039 | Thành viên 1 (Source Ingestion Owner) | `src/ingestion/crossref.py`, `data/raw/` |
+| 3 | Lại Duy Đông | 2A202601913 | Thành viên 2 (Data Cleaning & Eval Set Owner) | `src/ingestion/cleaning.py`, `src/evaluation/testset.py`, `data/clean/` |
+| 4 | Nguyễn Quang Vinh | 2A202601049 | Thành viên 3 (RAG & Agent Owner) | `src/retrieval/index.py`, `src/retrieval/agent.py`, `data/embeddings/` |
+| 5 | Đinh Quang Minh | 2A202601347 | Thành viên 4 (Observability, Corruption & Reporting Owner) | `src/observability/quality.py`, `src/observability/reporting.py`, `src/ingestion/corruption.py` |
 
 ## 2. Tóm tắt kết quả
 

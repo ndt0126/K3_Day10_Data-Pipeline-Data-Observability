@@ -144,42 +144,55 @@ def coerce_metadata(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     return df, notes
 
 
-def validate_contract(df: pd.DataFrame) -> list[str]:
+def validate_contract(df: pd.DataFrame) -> tuple[list[str], list[str]]:
     """Check a cleaned dataframe against the agreed Clean Dataset Schema.
 
-    Returns a list of human-readable problems; empty means the contract holds.
+    Returns `(fatal, repairable)`.
+
+    *fatal* problems make the dataset unusable -- a missing column, no rows, a
+    null `paper_id`. Nothing downstream can proceed.
+
+    *repairable* problems are contract violations that `coerce_metadata` can
+    work around, principally nulls in the eight ChromaDB metadata fields. These
+    must still be reported loudly and raised with the artifact's owner: a
+    corrupted dataset is allowed to contain bad *values*, but it is not allowed
+    to break the *schema* the whole team agreed on.
     """
-    problems: list[str] = []
+    fatal: list[str] = []
+    repairable: list[str] = []
 
     missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
     if missing:
-        problems.append(f"missing required columns: {', '.join(missing)}")
-        return problems  # further checks would just cascade
+        fatal.append(f"missing required columns: {', '.join(missing)}")
+        return fatal, repairable  # further checks would just cascade
 
     if df.empty:
-        problems.append("dataframe has no rows")
-        return problems
+        fatal.append("dataframe has no rows")
+        return fatal, repairable
 
     if df["paper_id"].isna().any() or (df["paper_id"].astype(str).str.strip() == "").any():
-        problems.append("paper_id contains null or empty values")
-
-    for column in METADATA_COLUMNS:
-        null_count = int(df[column].isna().sum())
-        if null_count:
-            problems.append(
-                f"{column} has {null_count} null value(s) -- ChromaDB metadata rejects non-scalars"
-            )
-
-    if df["text_for_embedding"].astype(str).str.strip().eq("").any():
-        blank = int(df["text_for_embedding"].astype(str).str.strip().eq("").sum())
-        problems.append(f"text_for_embedding is blank on {blank} row(s) -- those documents cannot be embedded")
+        fatal.append("paper_id contains null or empty values")
 
     try:
         pd.to_numeric(df["age_days"])
     except (TypeError, ValueError):
-        problems.append("age_days is not numeric")
+        fatal.append("age_days is not numeric")
 
-    return problems
+    for column in METADATA_COLUMNS:
+        null_count = int(df[column].isna().sum())
+        if null_count:
+            repairable.append(
+                f"{column} has {null_count} null value(s) -- contract requires \"\", "
+                "and ChromaDB metadata rejects non-scalars"
+            )
+
+    blank = int(df["text_for_embedding"].astype(str).str.strip().eq("").sum())
+    if blank:
+        repairable.append(
+            f"text_for_embedding is blank on {blank} row(s) -- those documents embed as empty text"
+        )
+
+    return fatal, repairable
 
 
 def duplicate_report(df: pd.DataFrame) -> dict[str, int]:

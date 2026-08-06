@@ -109,7 +109,7 @@ uv run python script/run_corruption_flow.py
 | `retrieval_hit_rate` | 100.0% | 50.0% | 100.0% | Corruption làm sụt 50% khả năng tìm kiếm |
 | `mean_token_f1` | 1.000 | 0.438 | 1.000 | Phục hồi hoàn toàn sau khi repair |
 | `judge_accuracy` | 100.0% | 43.8% | 100.0% | Tác động dữ liệu xấu làm Agent trả lời sai |
-| `mean_judge_score` | 5.000 | 2.750 | 5.000 | Phục hồi về điểm tuyệt đối 5/5 |
+| `mean_judge_score` | 5.000 | 3.0625 | 5.000 | LLM judge giảm khi corrupted và phục hồi về điểm tuyệt đối 5/5 |
 | Quality checks | PASS (6/6) | FAIL (3/6) | PASS (6/6) | Phản ánh chính xác sự cố dữ liệu |
 | Freshness status | Fresh | Stale | Fresh | Cảnh báo kịp thời khi ngày công bố bị làm cũ |
 

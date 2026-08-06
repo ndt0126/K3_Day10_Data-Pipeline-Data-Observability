@@ -149,7 +149,7 @@ uv run python script/run_corruption_flow.py
    Mục tiêu narrative là: cùng đầu vào, chỉ khác dữ liệu → chứng minh data quality ảnh hưởng trực tiếp đến answer quality. Test set được tạo 1 lần từ clean data, dùng lại cho 3 stage. Cờ `REFRESH_TEST_SET=1` chỉ dùng khi đổi clean dataset (tăng `max_results` chẳng hạn).
 
 5. **Repair được xem là thành công dựa trên artifact và metric nào?** Repair = **rebuild lại clean data từ raw** (không "un-corrupt" dữ liệu hỏng). Đây là tiền đề của bài: nếu repair chỉ revert corruption thì không có ý nghĩa. Artifact + metric tiêu chí thành công:
-   - `data/clean/papers_clean_repaired.csv` schema giống baseline, `paper_id` không overlap với corrupted (vì rebuilt từ raw).
+   - `data/clean/papers_clean_repaired.csv` có schema và tập `paper_id` khớp baseline (vì rebuilt từ raw), không còn duplicate hay giá trị corrupted.
    - `data/quality/gx/repaired.json` `failed = 0` (hoặc `success_rate` bằng baseline).
    - `data/quality/freshness_repaired.json` `is_fresh = true`, `stale_rows` bằng baseline.
    - `data/results/repaired_metrics.json`: `retrieval_hit_rate / mean_token_f1 / judge_accuracy / mean_judge_score` ≈ baseline (±~5%) và cao hơn corrupted đáng kể.
@@ -164,7 +164,7 @@ uv run python script/run_corruption_flow.py
 | `retrieval_hit_rate` | 100.0% | 50.0% | 100.0% | Drop latest 5/24 records (khoảng 21% dữ liệu) + blank/noise/truncate summary đủ để giảm retrieval từ 16/16 xuống 8/16 đúng câu. Repaired trở lại 16/16 vì rebuilt từ raw |
 | `mean_token_f1` | 1.000 | 0.438 | 1.000 | Trả lời của agent dựa trên `first_sentence(summary)` — blank summary 5/19 rows + noise 4 rows → câu trả lời lệch ground truth → F1 sụt mạnh |
 | `judge_accuracy` | 100.0% | 43.8% | 100.0% | Judge LLM đánh giá đúng 7/16 câu (gần 1:1 với hit_rate) |
-| `mean_judge_score` | 5.000 | 2.750 | 5.000 | Trung bình điểm 2.75/5 ở corrupted, phục hồi về 5/5 |
+| `mean_judge_score` | 5.000 | 3.0625 | 5.000 | Trung bình điểm LLM judge 3.0625/5 ở corrupted, phục hồi về 5/5 |
 | Quality checks (pass rate) | 100.0% (6/6) | 50.0% (3/6) | 100.0% (6/6) | Corrupted fail ở `paper_id_unique` (3 duplicate), `summary_length` (6 summary < 40 chars), `freshness` (6 rows > 180 days) |
 | Freshness status | Fresh (0 stale) | Stale (6 stale) | Fresh (0 stale) | `freshness_corrupted.json` cho thấy 6 rows vượt 180-day threshold sau khi stale-shift 365 ngày; `freshness_repaired.json` trở lại 0 |
 
@@ -178,7 +178,7 @@ uv run python script/run_corruption_flow.py
 
 **Corruption ảnh hưởng rõ nhất:** `drop_latest_records` (5 rows) vì 4 paper của test set đều nằm trong top `paper_id` thấp (TV2 chọn bằng `candidates.head(4).sort_values("paper_id")` trên DataFrame sort theo `published` desc), nên 5 latest bị drop trùng với 2 paper thuộc test set → 8/16 câu hỏi không retrieve được ground truth. Bằng chứng: `retrieval_hit_rate` 50% = 8/16, đúng kỳ vọng toán học.
 
-**Kết quả khác với kỳ vọng ban đầu:** Kỳ vọng `mean_judge_score` ở corrupted sẽ giảm mạnh hơn (vì judge có thể đánh giá thấp cả 8 câu không hit). Thực tế `mean_judge_score = 2.75` (= 5.0 × 0.55, lệch tương ứng với 7/16 câu correct + 9/16 câu sai ở mức 1–2 điểm) → judge LLM đã đánh giá "từ tế" hơn kỳ vọng. Điều này cho thấy LLM judge có thể chấp nhận một phần câu trả lời dù retrieval miss, miễn là câu đó "nghe có vẻ đúng".
+**Kết quả khác với kỳ vọng ban đầu:** Kỳ vọng `mean_judge_score` ở corrupted sẽ giảm mạnh hơn vì 8 câu không retrieve được ground-truth document. Thực tế `mean_judge_score = 3.0625`: LLM judge cho 7 câu điểm 5, 1 câu điểm 3, 3 câu điểm 2 và 5 câu điểm 1. Điều này cho thấy điểm số có ghi nhận mức đúng một phần thay vì chỉ lặp lại nhãn đúng/sai.
 
 ## 9. Điều học được và hướng cải thiện
 

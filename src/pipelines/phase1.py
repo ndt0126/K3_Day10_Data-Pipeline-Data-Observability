@@ -30,7 +30,10 @@ def main() -> None:
     # 2. Clean data
     if settings.paths.clean_csv.exists() and not settings.refresh_source:
         print(f"Loading clean data from {settings.paths.clean_csv}...")
-        df = pd.read_csv(settings.paths.clean_csv)
+        # Preserve intentionally empty optional text fields as empty strings.
+        # Pandas' default NA coercion produces float NaN metadata that Chroma
+        # rejects when an existing CSV artifact is reused.
+        df = pd.read_csv(settings.paths.clean_csv, keep_default_na=False)
     else:
         print("Cleaning raw records...")
         df = build_clean_dataframe(records, datetime.now(UTC))
@@ -73,9 +76,11 @@ def main() -> None:
     print("Generating Phase 1 Markdown report...")
     source_summary = {
         "source_api": settings.source_api,
-        "raw_count": len(records),
-        "clean_count": len(df),
-        "eval_count": len(test_set),
+        "source_query": settings.source_query,
+        "source_filter": settings.source_filter,
+        "max_results": settings.max_results,
+        "fetched_records": len(records),
+        "cleaned_records": len(df),
     }
     generate_phase1_report(
         report_path=settings.paths.baseline_report,
@@ -86,4 +91,3 @@ def main() -> None:
     )
 
     print("=== PHASE 1 BASELINE PIPELINE COMPLETED SUCCESSFULLY ===")
-

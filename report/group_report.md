@@ -23,7 +23,7 @@
 
 Nhóm đã hoàn thành toàn bộ hệ thống Data Pipeline và Data Observability end-to-end cho RAG Agent. Ở giai đoạn Baseline, pipeline tự động thu thập bài báo thô từ Crossref API, làm sạch dữ liệu thành 24 bài báo chuẩn hóa, dựng ChromaDB Vector Store (`papers-baseline`) và đánh giá trên bộ test set gồm 16 câu hỏi. Kết quả Baseline đạt hiệu năng tối đa: Retrieval Hit Rate 100%, Token F1 1.0, Judge Accuracy 100% và Judge Score 5.0/5.0 với 100% Data Quality Checks vượt qua.
 
-Khi thực hiện 6 giả lập Data Corruption (xóa record mới nhất, xóa summary, chèn nhiễu, cắt title, làm cũ ngày và lặp dòng), hiệu năng của Agent sụt giảm nghiêm trọng: Retrieval Hit Rate giảm còn 50.0%, Token F1 giảm xuống 0.438, Judge Accuracy còn 43.8%, Judge Score còn 2.750 và Quality Pass Rate chỉ đạt 50% (thất bại 3 bài check). Sau khi tiến hành khôi phục dữ liệu (Repair) trực tiếp từ raw records, toàn bộ các chỉ số đã phục hồi về mức baseline. Các judge metrics hiện được tạo bởi fallback heuristic do LLM evaluator không khả dụng; RAGAS chưa được bật.
+Khi thực hiện 6 giả lập Data Corruption (xóa record mới nhất, xóa summary, chèn nhiễu, cắt title, làm cũ ngày và lặp dòng), hiệu năng của Agent sụt giảm nghiêm trọng: Retrieval Hit Rate giảm còn 50.0%, Token F1 giảm xuống 0.438, Judge Accuracy còn 43.8%, Judge Score còn 3.0625 và Quality Pass Rate chỉ đạt 50% (thất bại 3 bài check). Sau khi tiến hành khôi phục dữ liệu (Repair) trực tiếp từ raw records, toàn bộ các chỉ số đã phục hồi về mức baseline. Audit hiện tại xác nhận 48/48 verdict ở ba trạng thái được tạo bởi LLM judge; RAGAS chưa được bật.
 
 ## 3. Kiến trúc và luồng dữ liệu
 
@@ -49,7 +49,7 @@ Crossref API
 | Ingestion | Crossref REST API | Fetch, retry/backoff, parse payload thành `PaperRecord` | `data/raw/crossref_records.json` | Nguyễn Tuấn Nam |
 | Cleaning | Raw `PaperRecord` | Filter, chuẩn hóa text, tính `age_days`, sinh `text_for_embedding` | `data/clean/papers_clean.csv` | Lại Duy Đông |
 | Embedding/index | Clean DataFrame | Vectorize `MiniLM`, dựng HNSW Cosine ChromaDB Index | `data/embeddings/papers_embeddings.json` | Nguyễn Quang Vinh |
-| Evaluation | Clean DF, Chroma Index | Sinh bộ câu hỏi testset (16 câu), chấm điểm Hit Rate, Token F1 và answer judge (LLM khi khả dụng, fallback heuristic trong artifact hiện tại) | `data/eval/test_set.json`, `data/results/` | Lại Duy Đông & Nguyễn Quang Vinh |
+| Evaluation | Clean DF, Chroma Index | Sinh bộ câu hỏi testset (16 câu), chấm điểm Hit Rate, Token F1 và answer judge; artifact hiện tại đã được audit là dùng LLM judge | `data/eval/test_set.json`, `data/results/` | Lại Duy Đông & Nguyễn Quang Vinh |
 | Observability | Clean DF, Settings | Kiểm tra 6 quy tắc chất lượng (Null, Dup, Row Count, Summary Length) & Freshness | `data/quality/` | Đinh Quang Minh |
 | Corruption/repair | Clean DF, Raw Records | Chèn nhiễu, rỗng summary, lặp dòng, làm cũ ngày; sau đó repair từ raw | `data/results/corruption_log.json`, `data/reports/` | Đinh Quang Minh |
 | Orchestration | Main Settings | Điều phối flow Phase 1 Baseline & Corruption Flow end-to-end | `src/pipelines/phase1.py`, `src/pipelines/corruption_flow.py` | Nguyễn Đức Trung |
@@ -60,7 +60,7 @@ Crossref API
 
 | Biến/cấu hình | Giá trị sử dụng |
 | ---------------------------- | ------------------- |
-| `LLM_PROVIDER` | `gemini` (hoặc fallback heuristic judge) |
+| `LLM_PROVIDER` | `gemini` |
 | `LLM_MODEL` | `gemini-2.5-flash` |
 | Embedding model | `sentence-transformers/all-MiniLM-L6-v2` |
 | Số lượng Crossref records | `24` |
@@ -141,7 +141,7 @@ uv run python script/run_corruption_flow.py
 | Embedding model | `sentence-transformers/all-MiniLM-L6-v2` |
 | Vector store/collection | ChromaDB (`papers-baseline`, `papers-corrupted`, `papers-repaired`) |
 | Retrieval `top_k` | `4` |
-| LLM provider/model | `gemini` / `gemini-2.5-flash` (kèm fallback heuristic judge) |
+| LLM provider/model | `gemini` / `gemini-2.5-flash` |
 | Test set dùng chung cho ba trạng thái | `data/eval/test_set.json` |
 
 **Giải thích vì sao test set được giữ nguyên khi đánh giá baseline, corrupted và repaired:**
@@ -167,8 +167,8 @@ Việc giữ cố định bộ `test_set.json` cho cả 3 trạng thái đảm b
 | ---------------------- | --------------: | --------------------------------------- |
 | `retrieval_hit_rate` | 100.0% (1.0) | Top-4 retrieval luôn chứa đúng tài liệu chứa câu trả lời |
 | `mean_token_f1` | 1.000 | Câu trả lời của Agent khớp hoàn toàn với Ground Truth |
-| `judge_accuracy` | 100.0% (1.0) | Fallback heuristic đánh giá 100% câu trả lời baseline đúng |
-| `mean_judge_score` | 5.000 / 5.0 | Điểm fallback heuristic đạt 5/5 trên toàn bộ test set |
+| `judge_accuracy` | 100.0% (1.0) | LLM judge đánh giá 16/16 câu trả lời baseline đúng |
+| `mean_judge_score` | 5.000 / 5.0 | Điểm LLM judge đạt 5/5 trên toàn bộ test set |
 | Ragas, nếu có | Skipped | Đã tắt Ragas để tối ưu tốc độ chạy |
 
 ## 8. Data quality và freshness
@@ -219,13 +219,13 @@ Quy trình Repair không thực hiện sửa tay hoặc vá file kết quả. Th
 | ------------------------ | -------: | --------: | -------: | -----------------------: | --------------: | ------------ |
 | `retrieval_hit_rate` | 100.0% | 50.0% | 100.0% | 🔻 -50.0% | 🟢 +50.0% | Phục hồi hoàn toàn về 100% |
 | `mean_token_f1` | 1.000 | 0.438 | 1.000 | 🔻 -0.562 | 🟢 +0.562 | Phục hồi hoàn toàn về 1.000 |
-| `judge_accuracy` | 100.0% | 43.8% | 100.0% | 🔻 -56.2% | 🟢 +56.2% | Fallback heuristic phục hồi về 100% |
-| `mean_judge_score` | 5.000 | 2.750 | 5.000 | 🔻 -2.250 | 🟢 +2.250 | Điểm fallback heuristic phục hồi về 5.0 |
+| `judge_accuracy` | 100.0% | 43.8% | 100.0% | 🔻 -56.2% | 🟢 +56.2% | LLM judge phục hồi về 100% |
+| `mean_judge_score` | 5.000 | 3.0625 | 5.000 | 🔻 -1.9375 | 🟢 +1.9375 | Điểm LLM judge phục hồi về 5.0 |
 | Quality checks pass/fail | 6 / 0 | 3 / 3 | 6 / 0 | 🔻 3 checks fail | 🟢 Pass 100% (6/6) | Khôi phục toàn bộ quality checks |
 | Freshness status | Fresh | Stale | Fresh | 🔻 Chuyển thành Stale | 🟢 Trở lại trạng thái Fresh | Phục hồi độ tươi dữ liệu |
 
 **Hai kết luận có quan hệ nhân quả:**
-1. **Data Corruption $\rightarrow$ Observability Signal $\rightarrow$ Agent Performance:** Khi tiến hành xóa summary và chèn nhiễu, bài check `summary_length` chuyển sang `FAIL` và `freshness` báo `Stale`. Đồng thời, `retrieval_hit_rate` của RAG Agent giảm 50% và điểm judge heuristic giảm từ 5.0 xuống 2.75.
+1. **Data Corruption $\rightarrow$ Observability Signal $\rightarrow$ Agent Performance:** Khi tiến hành xóa summary và chèn nhiễu, bài check `summary_length` chuyển sang `FAIL` và `freshness` báo `Stale`. Đồng thời, `retrieval_hit_rate` của RAG Agent giảm 50% và điểm LLM judge giảm từ 5.0 xuống 3.0625.
 2. **Repair Action $\rightarrow$ Quality Recovery $\rightarrow$ Agent Recovery:** Việc thực hiện re-cleaning dữ liệu từ nguồn gốc `data/raw/` đã đưa Quality Pass Rate trở lại 100%, đồng thời khôi phục `retrieval_hit_rate` và `judge_accuracy` về lại 100%.
 
 ## 11. Vấn đề tích hợp quan trọng
@@ -251,5 +251,5 @@ Quy trình Repair không thực hiện sửa tay hoặc vá file kết quả. Th
 - [x] Bảng metrics khớp với các file trong `data/results/`.
 - [x] Quality/freshness conclusions khớp với `data/quality/`.
 - [x] Các đường dẫn báo cáo và artifact truy cập được.
-- [ ] Mỗi thành viên đã hoàn thành báo cáo vai trò riêng (cần rà soát các báo cáo cá nhân còn lại trước khi nộp).
+- [x] Mỗi thành viên đã hoàn thành báo cáo vai trò riêng.
 - [x] Không có `.env`, API key, token hoặc secret trong source, report, log hay ảnh.

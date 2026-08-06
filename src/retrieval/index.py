@@ -116,7 +116,10 @@ class LocalEmbeddingIndex:
             {
                 "backend": "chroma",
                 "embedding_model": settings.embedding_model,
-                "persist_path": str(persist_path),
+                # The store is derived and rebuilt locally.  Keeping this path
+                # project-relative makes committed manifests portable across
+                # Windows, macOS and Linux checkouts.
+                "persist_path": str(persist_path.relative_to(settings.paths.project_dir)),
                 "collection_name": collection_name,
                 "documents": documents,
             },
@@ -135,7 +138,9 @@ class LocalEmbeddingIndex:
             settings=settings,
             collection_name=payload["collection_name"],
             documents=payload["documents"],
-            persist_path=Path(payload["persist_path"]),
+            # Settings is the source of truth for the current checkout.  Older
+            # manifests may contain an absolute path from another contributor.
+            persist_path=settings.paths.chroma_dir,
         )
 
     def search(self, query: str, top_k: int | None = None) -> list[SearchResult]:

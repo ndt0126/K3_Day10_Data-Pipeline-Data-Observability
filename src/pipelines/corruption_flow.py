@@ -21,7 +21,9 @@ def main() -> None:
 
     # 1. Load baseline clean dataset & metrics
     print(f"Loading clean baseline dataset from {settings.paths.clean_csv}...")
-    df_clean = pd.read_csv(settings.paths.clean_csv)
+    # Keep optional empty text fields as strings so Chroma metadata remains
+    # scalar and regenerated JSON artifacts do not contain unexpected nulls.
+    df_clean = pd.read_csv(settings.paths.clean_csv, keep_default_na=False)
     baseline_metrics = read_json(settings.paths.baseline_metrics)
 
     # 2. Corrupt data
@@ -104,4 +106,3 @@ def main() -> None:
     )
 
     print("=== CORRUPTION & REPAIR PIPELINE FLOW COMPLETED SUCCESSFULLY ===")
-

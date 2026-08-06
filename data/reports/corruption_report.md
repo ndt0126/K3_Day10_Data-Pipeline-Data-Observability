@@ -10,7 +10,7 @@ _Auto-generated. All numbers come from the artifacts under `data/`._
 | retrieval_hit_rate | 100.0% | 50.0% | 100.0% | 🟢 +0.000 |
 | mean_token_f1 | 1.000 | 0.438 | 1.000 | 🟢 +0.000 |
 | judge_accuracy | 100.0% | 43.8% | 100.0% | 🟢 +0.000 |
-| mean_judge_score | 5.000 | 2.750 | 5.000 | 🟢 +0.000 |
+| mean_judge_score | 5.000 | 3.062 | 5.000 | 🟢 +0.000 |
 
 ## 2. Data quality
 

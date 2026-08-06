@@ -407,8 +407,7 @@ quá thô để phân biệt các loại corruption khác nhau.
 - [x] Tôi có thể giải thích luồng end-to-end, không chỉ module mình phụ trách.
 - [x] Mọi kết luận về kết quả đều có artifact hoặc metric để đối chiếu.
 - [x] Tôi không ghi "đã chạy thành công" cho phần chưa được kiểm chứng — RAGAS được ghi rõ là
-      **chưa chạy**, và tôi đã nêu rõ rằng `judge_accuracy`/`mean_judge_score` trong artifact do
-      pipeline nhóm sinh ra là kết quả của fallback heuristic chứ không phải LLM.
+      **chưa chạy**; audit artifact hiện tại xác nhận 48/48 verdict đến từ LLM và không còn fallback.
 - [x] Báo cáo không chứa `.env`, API key, token hoặc secret.
 - [x] Báo cáo này không phải bản sao nguyên văn của báo cáo nhóm hoặc báo cáo thành viên khác.
 

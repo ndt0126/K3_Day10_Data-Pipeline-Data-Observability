@@ -155,16 +155,16 @@ uv run python -c "import sys; sys.path.insert(0, 'src'); from core.config import
 | Metric/signal          | Baseline | Corrupted | Repaired | Nhận xét của cá nhân |
 | ---------------------- | -------: | --------: | -------: | --------------------- |
 | `retrieval_hit_rate`   |     1.00 |      0.50 |     1.00 | Dữ liệu bị corrupt làm giảm tỷ lệ tìm kiếm chính xác; sau khi repair từ dữ liệu gốc, hit rate khôi phục 100% |
-| `mean_token_f1`        |     0.85 |      0.42 |     0.84 | F1-score giảm mạnh do thông tin bị nhiễu/thiếu; khôi phục gần như hoàn toàn sau repair |
-| `judge_accuracy`       |     0.90 |      0.45 |     0.90 | Độ chính xác câu trả lời của Agent tăng trở lại 90% sau khi sửa dữ liệu thô |
-| `mean_judge_score`     |     4.50 |      2.10 |     4.45 | Điểm đánh giá chất lượng câu trả lời khôi phục về mức cao |
+| `mean_token_f1`        |     1.00 |    0.4375 |     1.00 | F1-score giảm mạnh do thông tin bị nhiễu/thiếu; khôi phục hoàn toàn sau repair |
+| `judge_accuracy`       |     1.00 |    0.4375 |     1.00 | LLM judge đánh giá đúng 7/16 câu ở trạng thái corrupted và phục hồi 100% sau repair |
+| `mean_judge_score`     |     5.00 |    3.0625 |     5.00 | Điểm LLM judge giảm do corruption và phục hồi hoàn toàn về baseline |
 | Quality checks         |     PASS |     FAIL  |     PASS | Phản ánh chính xác các lỗi thiếu dữ liệu, rỗng summary và trùng lặp |
 | Freshness status       |    FRESH |    STALE  |    FRESH | Cảnh báo dữ liệu bị cũ quá ngưỡng 180 ngày được phát hiện và khắc phục |
 
 ### Kết luận từ số liệu
 
-1. **Chuỗi dữ liệu hỏng:** `Data corruption (xóa bài báo mới, làm rỗng summary)` -> `Quality check FAIL & Freshness STALE` -> `Retrieval Hit Rate giảm từ 1.00 xuống 0.50, Judge Accuracy giảm từ 0.90 xuống 0.45`.
-2. **Chuỗi khôi phục:** `Repair action (Nạp lại dữ liệu chuẩn từ data/raw/crossref_records.json)` -> `Quality & Freshness khôi phục PASS/FRESH` -> `Retrieval Hit Rate phục hồi về 1.00, Judge Accuracy phục hồi về 0.90`.
+1. **Chuỗi dữ liệu hỏng:** `Data corruption (xóa bài báo mới, làm rỗng summary)` -> `Quality check FAIL & Freshness STALE` -> `Retrieval Hit Rate giảm từ 1.00 xuống 0.50, Judge Accuracy giảm từ 1.00 xuống 0.4375`.
+2. **Chuỗi khôi phục:** `Repair action (Nạp lại dữ liệu chuẩn từ data/raw/crossref_records.json)` -> `Quality & Freshness khôi phục PASS/FRESH` -> `Retrieval Hit Rate và Judge Accuracy phục hồi về 1.00`.
 
 - **Corruption ảnh hưởng rõ nhất:** Việc xóa bớt bản ghi mới nhất và làm rỗng trường `summary` ảnh hưởng nghiêm trọng nhất đến khả năng tìm kiếm thông tin của Agent.
 - **Kết quả đúng như kỳ vọng:** Pipeline kiểm định chất lượng dữ liệu (Data Observability) đã phát hiện lỗi kịp thời trước khi để Agent trả lời sai thông tin cho người dùng.

@@ -5,11 +5,11 @@ _Auto-generated. Numbers come from the artifacts in `data/`._
 ## 1. Source
 
 - Provider: Crossref REST API
-- Query: `n/a`
-- Filter: `n/a`
-- Requested rows: `n/a`
-- Fetched records: **n/a**
-- Cleaned records: **n/a**
+- Query: `agentic retrieval augmented generation large language model`
+- Filter: `from-pub-date:2026-02-07,has-abstract:true`
+- Requested rows: `24`
+- Fetched records: **24**
+- Cleaned records: **24**
 
 ## 2. RAG evaluation
 

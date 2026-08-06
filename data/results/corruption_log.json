@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "input_rows": 24,
+  "output_rows": 22,
+  "scenarios": [
+    {
+      "name": "drop_latest_records",
+      "requested": 5,
+      "dropped": 5
+    },
+    {
+      "name": "blank_summaries",
+      "requested": 5,
+      "blanked": 5
+    },
+    {
+      "name": "inject_summary_noise",
+      "requested": 4,
+      "noised": 4
+    },
+    {
+      "name": "truncate_titles",
+      "requested": 5,
+      "truncated": 5
+    },
+    {
+      "name": "stale_published_dates",
+      "requested": 4,
+      "stale": 4
+    },
+    {
+      "name": "duplicate_rows",
+      "requested": 3,
+      "duplicated": 3
+    }
+  ]
+}

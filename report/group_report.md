@@ -23,7 +23,7 @@
 
 Nhóm đã hoàn thành toàn bộ hệ thống Data Pipeline và Data Observability end-to-end cho RAG Agent. Ở giai đoạn Baseline, pipeline tự động thu thập bài báo thô từ Crossref API, làm sạch dữ liệu thành 24 bài báo chuẩn hóa, dựng ChromaDB Vector Store (`papers-baseline`) và đánh giá trên bộ test set gồm 16 câu hỏi. Kết quả Baseline đạt hiệu năng tối đa: Retrieval Hit Rate 100%, Token F1 1.0, Judge Accuracy 100% và Judge Score 5.0/5.0 với 100% Data Quality Checks vượt qua.
 
-Khi thực hiện giả lập Data Corruption (nhiễu dữ liệu, xóa summary, lặp dòng, làm cũ ngày), hiệu năng của Agent sụt giảm nghiêm trọng: Retrieval Hit Rate giảm còn 50.0%, Token F1 giảm xuống 0.438, Judge Score giảm còn 2.750 và Quality Pass Rate chỉ đạt 50% (thất bại 3 bài check). Sau khi tiến hành khôi phục dữ liệu (Repair) trực tiếp từ nguồn Raw API, toàn bộ các chỉ số đã phục hồi hoàn toàn về mức 100%. Hệ thống không còn bất kỳ blocker nào.
+Khi thực hiện 6 giả lập Data Corruption (xóa record mới nhất, xóa summary, chèn nhiễu, cắt title, làm cũ ngày và lặp dòng), hiệu năng của Agent sụt giảm nghiêm trọng: Retrieval Hit Rate giảm còn 50.0%, Token F1 giảm xuống 0.438, Judge Accuracy còn 43.8%, Judge Score còn 2.750 và Quality Pass Rate chỉ đạt 50% (thất bại 3 bài check). Sau khi tiến hành khôi phục dữ liệu (Repair) trực tiếp từ raw records, toàn bộ các chỉ số đã phục hồi về mức baseline. Các judge metrics hiện được tạo bởi fallback heuristic do LLM evaluator không khả dụng; RAGAS chưa được bật.
 
 ## 3. Kiến trúc và luồng dữ liệu
 
@@ -49,7 +49,7 @@ Crossref API
 | Ingestion | Crossref REST API | Fetch, retry/backoff, parse payload thành `PaperRecord` | `data/raw/crossref_records.json` | Nguyễn Tuấn Nam |
 | Cleaning | Raw `PaperRecord` | Filter, chuẩn hóa text, tính `age_days`, sinh `text_for_embedding` | `data/clean/papers_clean.csv` | Lại Duy Đông |
 | Embedding/index | Clean DataFrame | Vectorize `MiniLM`, dựng HNSW Cosine ChromaDB Index | `data/embeddings/papers_embeddings.json` | Nguyễn Quang Vinh |
-| Evaluation | Clean DF, Chroma Index | Sinh bộ câu hỏi testset (16 câu), chấm điểm Hit Rate, Token F1, LLM Judge | `data/eval/test_set.json`, `data/results/` | Lại Duy Đông & Nguyễn Quang Vinh |
+| Evaluation | Clean DF, Chroma Index | Sinh bộ câu hỏi testset (16 câu), chấm điểm Hit Rate, Token F1 và answer judge (LLM khi khả dụng, fallback heuristic trong artifact hiện tại) | `data/eval/test_set.json`, `data/results/` | Lại Duy Đông & Nguyễn Quang Vinh |
 | Observability | Clean DF, Settings | Kiểm tra 6 quy tắc chất lượng (Null, Dup, Row Count, Summary Length) & Freshness | `data/quality/` | Đinh Quang Minh |
 | Corruption/repair | Clean DF, Raw Records | Chèn nhiễu, rỗng summary, lặp dòng, làm cũ ngày; sau đó repair từ raw | `data/results/corruption_log.json`, `data/reports/` | Đinh Quang Minh |
 | Orchestration | Main Settings | Điều phối flow Phase 1 Baseline & Corruption Flow end-to-end | `src/pipelines/phase1.py`, `src/pipelines/corruption_flow.py` | Nguyễn Đức Trung |
@@ -158,7 +158,7 @@ Việc giữ cố định bộ `test_set.json` cho cả 3 trạng thái đảm b
 | Embedding manifest/index | `data/embeddings/papers_embeddings.json` | Có | Collection `papers-baseline` |
 | Evaluation set | `data/eval/test_set.json` | Có | 16 samples |
 | Baseline metrics | `data/results/baseline_metrics.json` | Có | Hit rate 100%, F1 1.0 |
-| Quality/freshness | `data/quality/quality_report_baseline.json` | Có | 6/6 checks PASS |
+| Quality/freshness | `data/quality/gx/baseline.json`, `data/quality/freshness_report.json` | Có | 6/6 checks PASS, Fresh |
 | Baseline report | `data/reports/phase1_report.md` | Có | Đã xuất báo cáo |
 
 ### Baseline metrics
@@ -167,8 +167,8 @@ Việc giữ cố định bộ `test_set.json` cho cả 3 trạng thái đảm b
 | ---------------------- | --------------: | --------------------------------------- |
 | `retrieval_hit_rate` | 100.0% (1.0) | Top-4 retrieval luôn chứa đúng tài liệu chứa câu trả lời |
 | `mean_token_f1` | 1.000 | Câu trả lời của Agent khớp hoàn toàn với Ground Truth |
-| `judge_accuracy` | 100.0% (1.0) | LLM Judge đánh giá 100% câu trả lời đúng |
-| `mean_judge_score` | 5.000 / 5.0 | Đạt điểm tuyệt đối 5/5 trên toàn bộ test set |
+| `judge_accuracy` | 100.0% (1.0) | Fallback heuristic đánh giá 100% câu trả lời baseline đúng |
+| `mean_judge_score` | 5.000 / 5.0 | Điểm fallback heuristic đạt 5/5 trên toàn bộ test set |
 | Ragas, nếu có | Skipped | Đã tắt Ragas để tối ưu tốc độ chạy |
 
 ## 8. Data quality và freshness
@@ -177,11 +177,11 @@ Việc giữ cố định bộ `test_set.json` cho cả 3 trạng thái đảm b
 
 | Check | Quality dimension | Ngưỡng/kỳ vọng | Kết quả baseline | Bằng chứng |
 | ------------ | ----------------- | ------------------ | ----------------------- | ------------ |
-| `row_count` | Completeness | $\ge 4$ rows | PASS (24 rows) | `data/quality/quality_report_baseline.json` |
-| `paper_id_not_null` | Validity | 0 null/empty | PASS (0 null) | `data/quality/quality_report_baseline.json` |
-| `paper_id_unique` | Uniqueness | 0 duplicate | PASS (0 duplicate) | `data/quality/quality_report_baseline.json` |
-| `title_not_null` | Validity | 0 blank title | PASS (0 blank) | `data/quality/quality_report_baseline.json` |
-| `summary_length` | Completeness | $\ge 40$ chars | PASS (0 short) | `data/quality/quality_report_baseline.json` |
+| `row_count` | Completeness | $\ge 4$ rows | PASS (24 rows) | `data/quality/gx/baseline.json` |
+| `paper_id_not_null` | Validity | 0 null/empty | PASS (0 null) | `data/quality/gx/baseline.json` |
+| `paper_id_unique` | Uniqueness | 0 duplicate | PASS (0 duplicate) | `data/quality/gx/baseline.json` |
+| `title_not_null` | Validity | 0 blank title | PASS (0 blank) | `data/quality/gx/baseline.json` |
+| `summary_length` | Completeness | $\ge 40$ chars | PASS (0 short) | `data/quality/gx/baseline.json` |
 | `freshness` | Timeliness | $\le 180$ days | PASS (0 stale) | `data/quality/freshness_report.json` |
 
 ### Freshness
@@ -199,15 +199,16 @@ Việc giữ cố định bộ `test_set.json` cho cả 3 trạng thái đảm b
 | Corruption | Cách tạo | Record bị tác động | Quality signal kỳ vọng | Tác động thực tế | Cách repair |
 | ------------------ | ---------- | ---------------------: | ------------------------ | --------------------- | -------------- |
 | Drop latest records | Xóa 20% bài báo mới nhất | 5 records | Cảnh báo stale date | Hit rate giảm do thiếu ngữ cảnh | Nạp lại từ `crossref_records.json` |
-| Blank summary | Xóa tóm tắt của một số bài | 3 records | Fail check `summary_length` | LLM trả lời sai/không có context | Phục hồi tóm tắt từ raw JSON |
+| Blank summary | Xóa tóm tắt của một số bài | 5 records | Fail check `summary_length` | Agent trả lời sai/không có context | Phục hồi tóm tắt từ raw JSON |
 | Inject noise | Chèn chuỗi rác `[REDACTED]` | 4 records | Không fail check thô nhưng giảm Token F1 | Token F1 sụt giảm | Clean lại văn bản từ nguồn gốc |
-| Stale publication date | Đẩy ngày xuất bản về quá 365 ngày | 6 records | Fail check `freshness` | Freshness status chuyển thành Stale | Parse lại đúng timestamp gốc |
+| Truncate title | Cắt còn 50% tiêu đề và thêm dấu `…` | 5 records | Có thể làm exact-title lookup thất bại | Giảm khả năng tìm đúng tài liệu | Phục hồi title từ raw JSON |
+| Stale publication date | Lùi ngày xuất bản 365 ngày | 4 records trực tiếp; quality phát hiện 6 dòng stale sau duplicate | Fail check `freshness` | Freshness status chuyển thành Stale | Parse lại đúng timestamp gốc |
 | Duplicate rows | Nhân bản một số dòng | 3 records | Fail check `paper_id_unique` | Tốn token & gây nhiễu ranking | Dedupe theo `paper_id` |
 
 Corruption log:
 - Đường dẫn: `data/results/corruption_log.json`
 - Trạng thái: Có
-- Nhận xét: Log ghi nhận đầy đủ 5 loại corruption, thông số hạt giống random, các `paper_id` bị tác động và số lượng dòng thay đổi.
+- Nhận xét: Log ghi nhận đầy đủ 6 loại corruption, random seed cố định trong code, số record được yêu cầu/tác động và số lượng dòng thay đổi từ 24 xuống 22.
 
 **Giải thích cách repair đảm bảo dữ liệu được phục hồi từ nguồn đáng tin cậy:**
 Quy trình Repair không thực hiện sửa tay hoặc vá file kết quả. Thay vào đó, hàm `build_clean_dataframe` được gọi lại trực tiếp trên tập dữ liệu thô ban đầu (`data/raw/crossref_records.json`), chạy lại toàn bộ quy trình làm sạch và phân tích đặc trưng chuẩn, giúp dữ liệu được phục hồi 100% nguyên bản.
@@ -218,13 +219,13 @@ Quy trình Repair không thực hiện sửa tay hoặc vá file kết quả. Th
 | ------------------------ | -------: | --------: | -------: | -----------------------: | --------------: | ------------ |
 | `retrieval_hit_rate` | 100.0% | 50.0% | 100.0% | 🔻 -50.0% | 🟢 +50.0% | Phục hồi hoàn toàn về 100% |
 | `mean_token_f1` | 1.000 | 0.438 | 1.000 | 🔻 -0.562 | 🟢 +0.562 | Phục hồi hoàn toàn về 1.000 |
-| `judge_accuracy` | 100.0% | 43.8% | 100.0% | 🔻 -56.2% | 🟢 +56.2% | Phục hồi hoàn toàn về 100% |
-| `mean_judge_score` | 5.000 | 2.750 | 5.000 | 🔻 -2.250 | 🟢 +2.250 | Phục hồi về điểm tuyệt đối 5.0 |
+| `judge_accuracy` | 100.0% | 43.8% | 100.0% | 🔻 -56.2% | 🟢 +56.2% | Fallback heuristic phục hồi về 100% |
+| `mean_judge_score` | 5.000 | 2.750 | 5.000 | 🔻 -2.250 | 🟢 +2.250 | Điểm fallback heuristic phục hồi về 5.0 |
 | Quality checks pass/fail | 6 / 0 | 3 / 3 | 6 / 0 | 🔻 3 checks fail | 🟢 Pass 100% (6/6) | Khôi phục toàn bộ quality checks |
 | Freshness status | Fresh | Stale | Fresh | 🔻 Chuyển thành Stale | 🟢 Trở lại trạng thái Fresh | Phục hồi độ tươi dữ liệu |
 
 **Hai kết luận có quan hệ nhân quả:**
-1. **Data Corruption $\rightarrow$ Observability Signal $\rightarrow$ Agent Performance:** Khi tiến hành xóa summary và chèn nhiễu, bài check `summary_length` chuyển sang `FAIL` và `freshness` báo `Stale`. Ngay lập tức, `retrieval_hit_rate` của RAG Agent giảm 50% và `mean_judge_score` giảm mạnh từ 5.0 xuống 2.75.
+1. **Data Corruption $\rightarrow$ Observability Signal $\rightarrow$ Agent Performance:** Khi tiến hành xóa summary và chèn nhiễu, bài check `summary_length` chuyển sang `FAIL` và `freshness` báo `Stale`. Đồng thời, `retrieval_hit_rate` của RAG Agent giảm 50% và điểm judge heuristic giảm từ 5.0 xuống 2.75.
 2. **Repair Action $\rightarrow$ Quality Recovery $\rightarrow$ Agent Recovery:** Việc thực hiện re-cleaning dữ liệu từ nguồn gốc `data/raw/` đã đưa Quality Pass Rate trở lại 100%, đồng thời khôi phục `retrieval_hit_rate` và `judge_accuracy` về lại 100%.
 
 ## 11. Vấn đề tích hợp quan trọng
@@ -250,5 +251,5 @@ Quy trình Repair không thực hiện sửa tay hoặc vá file kết quả. Th
 - [x] Bảng metrics khớp với các file trong `data/results/`.
 - [x] Quality/freshness conclusions khớp với `data/quality/`.
 - [x] Các đường dẫn báo cáo và artifact truy cập được.
-- [x] Mỗi thành viên đã hoàn thành báo cáo vai trò riêng.
+- [ ] Mỗi thành viên đã hoàn thành báo cáo vai trò riêng (cần rà soát các báo cáo cá nhân còn lại trước khi nộp).
 - [x] Không có `.env`, API key, token hoặc secret trong source, report, log hay ảnh.

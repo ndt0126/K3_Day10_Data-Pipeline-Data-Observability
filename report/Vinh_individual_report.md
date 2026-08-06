@@ -30,7 +30,7 @@ trong `src/`**. Phần việc tôi trực tiếp thực hiện là toàn bộ to
 | Smoke test semantic search/lookup | `script/check_retrieval.py`                         | Clean dataset + index                       | Log kiểm chứng, exit code gate                                       | Hoàn thành (baseline)         |
 | Agent demo & hallucination test   | `script/run_agent_demo.py`                          | Index + LLM provider                        | `data/results/agent_demo_answers.json`                               | Hoàn thành                    |
 | Thực thi evaluation metrics       | `script/run_evaluation.py`                          | `data/eval/test_set.json` (TV2) + index     | `data/results/baseline_metrics.json`, `baseline_answers.json`        | Hoàn thành (baseline)         |
-| Evaluation corrupted/repaired     | `script/run_evaluation.py --all`                    | Corrupted/repaired dataset (TV4)            | `corrupted_metrics.json`, `repaired_metrics.json`                    | **Chưa thực hiện — chờ TV4** |
+| Evaluation corrupted/repaired     | `script/run_evaluation.py --all`                    | Corrupted/repaired dataset từ flow tích hợp | `corrupted_metrics.json`, `repaired_metrics.json`                    | Hoàn thành, đã đối chiếu artifact |
 | RAGAS metrics                     | `RUN_RAGAS=1`                                       | Answers + LLM                               | Trường `ragas` trong metrics JSON                                    | **Chưa chạy**                 |
 | Tài liệu vận hành                 | `docs/` (gitignored)                                | —                                           | Runbook, data contract, ghi chú kỹ thuật                             | Hoàn thành                    |
 
@@ -51,8 +51,8 @@ trong `src/`**. Phần việc tôi trực tiếp thực hiện là toàn bộ to
 | Kiểm chứng exact lookup                          | Log của `check_retrieval.py`                 | 5/5 paper resolve bằng cả `paper_id` và title; key sai trả về `None` | `uv run python script/check_retrieval.py`  |
 | Kiểm chứng LLM provider + structured output      | Log của `check_llm.py`                       | `openai` / `gpt-4o-mini` PASS cả 5 stage                             | `uv run python script/check_llm.py`        |
 | Agent demo + hallucination test                  | `data/results/agent_demo_answers.json`       | 4/4 câu in-corpus có tool call; 3/3 câu out-of-corpus bị từ chối     | `uv run python script/run_agent_demo.py`   |
-| Chạy evaluation baseline                         | `data/results/baseline_metrics.json`         | 16 sample, cả 4 metric = 1.0                                         | `uv run python script/run_evaluation.py`   |
-| Kiểm chứng judge thật sự là LLM                  | `data/results/baseline_answers.json`         | 16/16 verdict đến từ LLM, 0 fallback heuristic                       | Mục "Judge integrity" trong log            |
+| Chạy evaluation ba trạng thái                    | `data/results/*_metrics.json`                | Đủ 16 sample cho baseline, corrupted và repaired                     | Đối chiếu ba metrics artifact              |
+| Kiểm chứng nguồn judge                           | `data/results/*_answers.json`                | Cả ba trạng thái dùng fallback heuristic do LLM evaluator không khả dụng | Kiểm tra trường `judge.reasoning`        |
 
 Một output cụ thể mà phần việc của tôi tạo ra:
 
@@ -113,13 +113,14 @@ uv run python script/run_agent_demo.py
 uv run python script/run_evaluation.py
 ```
 
-- **Kết quả mong đợi:** provider PASS; 24 vector 384 chiều trong đúng collection `papers-baseline`;
-  mọi paper tự truy hồi được; agent từ chối câu hỏi ngoài corpus; baseline metrics được ghi ra file
-  và judge là LLM thật.
-- **Kết quả thực tế:** đúng như mong đợi. `check_llm.py` PASS cả 5 stage. `check_retrieval.py` PASS
-  (5/5 self-retrieval rank 1, 5/5 lookup, 24/24 vector). `run_agent_demo.py`: 4/4 grounded, 3/3
-  refused. `run_evaluation.py`: 16 sample, `retrieval_hit_rate` = 1.0, `mean_token_f1` = 1.0,
-  `judge_accuracy` = 1.0, `mean_judge_score` = 5.0, 16/16 verdict từ LLM.
+- **Kết quả mong đợi:** 24 vector 384 chiều trong đúng collection `papers-baseline`; mọi paper tự
+  truy hồi được; agent từ chối câu hỏi ngoài corpus; đủ metrics cho cả ba trạng thái.
+- **Kết quả thực tế:** `check_retrieval.py` PASS (5/5 self-retrieval rank 1, 5/5 lookup,
+  24/24 vector). `run_agent_demo.py`: 4/4 grounded, 3/3 refused. Ba evaluation artifact đều có
+  16 sample. Baseline và repaired đạt `retrieval_hit_rate` = 1.0, `mean_token_f1` = 1.0,
+  `judge_accuracy` = 1.0, `mean_judge_score` = 5.0; corrupted lần lượt còn 0.5, 0.4375,
+  0.4375 và 2.75. Trường `judge.reasoning` cho biết evaluator đã dùng fallback heuristic ở cả ba
+  trạng thái; vì vậy không diễn giải các judge metrics này là kết quả của LLM judge thật.
 - **Artifact/log:** `data/embeddings/papers_embeddings.json`, `data/results/agent_demo_answers.json`,
   `data/results/baseline_metrics.json`, `data/results/baseline_answers.json`. Không chứa secret;
   `.env` nằm trong `.gitignore`.
@@ -221,36 +222,35 @@ file corrupted. Đó là lý do tồn tại của raw artifact — nếu chỉ g
 
 ### Metrics chính
 
-| Metric/signal        |   Baseline |     Corrupted |      Repaired | Nhận xét của cá nhân                                                                                    |
-| -------------------- | ---------: | ------------: | ------------: | -------------------------------------------------------------------------------------------------------- |
-| `retrieval_hit_rate` |     1.0000 | *(chờ TV4)* | *(chờ TV4)* | Trần sạch. 24 doc với `top_k=4` cộng exact-title lookup ghim đúng document lên vị trí 1                   |
-| `mean_token_f1`      |     1.0000 | *(chờ TV4)* | *(chờ TV4)* | Khớp tuyệt đối vì `ground_truth` sinh từ chính cột mà `_extract_answer` trả về — là hiệu ứng trần         |
-| `judge_accuracy`     |     1.0000 | *(chờ TV4)* | *(chờ TV4)* | 16/16 verdict đến từ LLM thật, đã kiểm tra không có fallback heuristic                                    |
-| `mean_judge_score`   |     5.0000 | *(chờ TV4)* | *(chờ TV4)* | Điểm tối đa trên thang 1–5                                                                                |
-| Quality checks       | *(TV4)*    | *(chờ TV4)* | *(chờ TV4)* | Ngoài phạm vi của tôi                                                                                     |
-| Freshness status     | *(TV4)*    | *(chờ TV4)* | *(chờ TV4)* | Dữ liệu baseline có `age_days` từ 5 đến 175, đều dưới ngưỡng 180                                          |
+| Metric/signal        | Baseline | Corrupted | Repaired | Nhận xét của cá nhân |
+| -------------------- | -------: | --------: | -------: | -------------------- |
+| `retrieval_hit_rate` | 1.0000 | 0.5000 | 1.0000 | Corruption làm mất một nửa retrieval hit; repair phục hồi hoàn toàn |
+| `mean_token_f1`      | 1.0000 | 0.4375 | 1.0000 | Nội dung trả lời suy giảm rõ rệt rồi trở lại mức baseline |
+| `judge_accuracy`     | 1.0000 | 0.4375 | 1.0000 | Chỉ số dùng fallback heuristic trong cả ba artifact, không phải LLM judge thật |
+| `mean_judge_score`   | 5.0000 | 2.7500 | 5.0000 | Điểm heuristic giảm 2.25 rồi phục hồi về 5.0 |
+| Quality checks       | 6/6 PASS | 3/6 PASS | 6/6 PASS | Corrupted fail uniqueness, summary length và freshness |
+| Freshness status     | Fresh | Stale | Fresh | Corrupted có 6 dòng stale; repaired không còn dòng stale |
 
 Ba chỉ số phụ tôi tự đo được ở baseline: self-retrieval **5/5 ở rank 1** (score 0.7263–0.8608),
 agent **4/4** câu in-corpus có tool call, **3/3** câu out-of-corpus bị từ chối.
 
 ### Kết luận từ số liệu
 
-Hai chuỗi nhân quả này **chưa hoàn thành** vì corrupted và repaired dataset chưa được bàn giao. Tôi
-không điền số phỏng đoán.
+Hai chuỗi nhân quả đã được xác nhận bằng artifact:
 
-1. `[Data corruption]` → `[quality/freshness signal thay đổi]` → `[agent metric thay đổi]` — **chờ
-   `corrupted_metrics.json`**.
-2. `[Repair action]` → `[quality/freshness phục hồi]` → `[agent metric phục hồi]` — **chờ
-   `repaired_metrics.json`**.
+1. `[Data corruption]` → quality giảm từ 6/6 xuống 3/6, freshness chuyển sang stale →
+   `retrieval_hit_rate` giảm 50% và `mean_token_f1` giảm 56.25%.
+2. `[Repair từ raw records]` → quality trở lại 6/6, freshness trở lại fresh → toàn bộ metrics
+   phục hồi về đúng mức baseline.
 
-Corruption nào ảnh hưởng rõ nhất và vì sao? — *(điền sau khi có dữ liệu corrupted)*
-
-**Dự đoán có căn cứ kỹ thuật, sẽ kiểm chứng sau:** ảnh hưởng mạnh nhất sẽ đến từ **xóa bản ghi** và
-**làm rỗng summary**, chứ không phải từ thêm nhiễu. Lý do nằm ở giới hạn 256 token của MiniLM: 20/24
+Các corruption ảnh hưởng trực tiếp nhất là **xóa bản ghi**, **làm rỗng summary** và **cắt title**:
+xóa bản ghi loại tài liệu đúng khỏi index; summary rỗng phá nội dung embedding/câu trả lời; title
+bị cắt làm exact-title lookup không còn khớp. Nhiễu chèn cuối summary có thể tác động yếu hơn do
+giới hạn 256 token của MiniLM: 20/24
 document hiện đã dài quá ngưỡng, nên nhiễu chèn vào **cuối** `text_for_embedding` rơi vào vùng bị
 cắt và **không bao giờ tới được vector**. Ngược lại, xóa bản ghi làm `retrieval_hit_rate` sụt trực
 tiếp vì document đúng biến mất khỏi index, còn làm rỗng summary phá luôn cả embedding lẫn câu trả
-lời cho nhóm câu hỏi `summary`. Tôi đã báo điểm này cho TV4 trước khi họ viết corruption.
+lời cho nhóm câu hỏi `summary`.
 
 Kết quả nào khác với kỳ vọng ban đầu? — cả bốn metric baseline đạt đúng 1.0, cao hơn tôi dự đoán.
 Giả thuyết ban đầu là có lỗi trong cách tính. Tôi đã kiểm tra bằng cách đọc trực tiếp
@@ -289,10 +289,9 @@ corruption có ý nghĩa hơn.
 - [x] Nội dung báo cáo phản ánh đúng phần việc và mức hiểu của tôi.
 - [x] Tôi có thể giải thích luồng end-to-end, không chỉ module mình phụ trách.
 - [x] Mọi kết luận về kết quả đều có artifact hoặc metric để đối chiếu.
-- [x] Tôi không ghi "đã chạy thành công" cho phần chưa được kiểm chứng — corrupted, repaired và
-      RAGAS được ghi rõ là **chưa thực hiện**.
+- [x] Corrupted và repaired được đối chiếu từ artifact thực tế; RAGAS vẫn được ghi rõ là chưa chạy.
 - [x] Báo cáo không chứa `.env`, API key, token hoặc secret.
 - [x] Báo cáo này không phải bản sao nguyên văn của báo cáo nhóm hoặc báo cáo thành viên khác.
 
-**Họ và tên:** [Họ và tên]
+**Họ và tên:** Nguyễn Quang Vinh
 **Ngày xác nhận:** 2026-08-06

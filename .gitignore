@@ -8,5 +8,10 @@ lab/
 
 /guidance/
 
-data/chroma/
+# Vector store is derived data: always regenerable from data/clean/ via
+# `python script/check_retrieval.py --all --rebuild`. It is binary, so git
+# cannot merge it -- tracking it produces unresolvable conflicts.
+data/chroma/*
+!data/chroma/.gitkeep
+
 docs/

@@ -15,6 +15,7 @@ Usage
     uv run python script/run_evaluation.py --state corrupted
     uv run python script/run_evaluation.py --all
     uv run python script/run_evaluation.py --compare       # read existing metrics, no LLM calls
+    uv run python script/run_evaluation.py --audit         # integrity check, no LLM calls
 """
 
 from __future__ import annotations
@@ -128,6 +129,89 @@ def run_state(settings, state: str) -> dict[str, Any] | None:
     return summary
 
 
+def audit(settings) -> int:
+    """Check existing metrics/answers artifacts without spending a single token.
+
+    Three questions this answers:
+      1. Did the LLM judge actually run, or did every verdict come from the
+         silent token-F1 fallback in `_judge_answer`?
+      2. Do the numbers in *_metrics.json actually match the *_answers.json
+         they claim to summarise? (report/artifact consistency)
+      3. Which question types degrade, and by how much?
+    """
+    from statistics import mean
+
+    print(f"\n{'=' * 72}\nAUDIT OF EXISTING ARTIFACTS (no LLM calls)\n{'=' * 72}")
+    failures = 0
+
+    for state in STATES:
+        target = state_paths(settings, state)
+        if not target.answers_json.exists():
+            print(f"\n  {state}: no answers file, skipped")
+            continue
+
+        answers = read_json(target.answers_json)
+        print(section(f"{state}  ({len(answers)} samples)"))
+
+        # 1. judge integrity
+        fallbacks = sum(
+            1 for item in answers if FALLBACK_MARKER in item["judge"].get("reasoning", "")
+        )
+        if fallbacks == 0:
+            print("  OK    judge: all verdicts came from the LLM")
+        elif fallbacks == len(answers):
+            print(
+                f"  FAIL  judge: all {fallbacks} verdicts used the token-F1 fallback.\n"
+                "        judge_accuracy and mean_judge_score are NOT LLM metrics here --\n"
+                "        they are a step function of token_f1 and carry no extra signal."
+            )
+            failures += 1
+        else:
+            print(f"  WARN  judge: {fallbacks}/{len(answers)} verdicts used the fallback")
+
+        # 2. do the stored metrics match the stored answers?
+        if target.metrics_json.exists():
+            stored = read_json(target.metrics_json)
+            recomputed = {
+                "samples": len(answers),
+                "retrieval_hit_rate": mean(1.0 if a["retrieval_hit"] else 0.0 for a in answers),
+                "mean_token_f1": mean(a["token_f1"] for a in answers),
+                "judge_accuracy": mean(1.0 if a["judge"]["correct"] else 0.0 for a in answers),
+                "mean_judge_score": mean(a["judge"]["score"] for a in answers),
+            }
+            mismatches = [
+                f"{key}: file={stored.get(key)} recomputed={value:.4f}"
+                for key, value in recomputed.items()
+                if not isinstance(stored.get(key), (int, float))
+                or abs(stored[key] - value) > 1e-6
+            ]
+            if mismatches:
+                print("  FAIL  metrics file does not match its answers file:")
+                for mismatch in mismatches:
+                    print(f"          {mismatch}")
+                failures += 1
+            else:
+                print("  OK    metrics file is consistent with its answers file")
+
+        # 3. per-question-type breakdown
+        by_type: dict[str, list[dict[str, Any]]] = {}
+        for item in answers:
+            by_type.setdefault(item["question_type"], []).append(item)
+        for question_type, items in sorted(by_type.items()):
+            hit = mean(1.0 if i["retrieval_hit"] else 0.0 for i in items)
+            f1 = mean(i["token_f1"] for i in items)
+            print(f"    {question_type:<12} n={len(items):<3} hit_rate={hit:.2f}  token_f1={f1:.4f}")
+
+    compare(settings)
+
+    print(section("Audit result"))
+    if failures:
+        print(f"  {failures} integrity problem(s) found -- see FAIL lines above")
+    else:
+        print("  no integrity problems found")
+    return 1 if failures else 0
+
+
 def compare(settings) -> None:
     print(f"\n{'=' * 72}\nCOMPARISON\n{'=' * 72}")
     loaded: dict[str, dict[str, Any]] = {}
@@ -168,9 +252,17 @@ def main() -> int:
     parser.add_argument("--state", choices=STATES, default="baseline")
     parser.add_argument("--all", action="store_true", help="evaluate every state that has an index")
     parser.add_argument("--compare", action="store_true", help="only print a comparison of existing metrics")
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="check existing artifacts for judge integrity and metric/answer consistency (no LLM calls)",
+    )
     args = parser.parse_args()
 
     settings = load_settings()
+
+    if args.audit:
+        return audit(settings)
 
     if args.compare:
         compare(settings)

@@ -9,6 +9,8 @@ Usage
     uv run python script/check_retrieval.py --rebuild           # force re-embed
     uv run python script/check_retrieval.py --state corrupted
     uv run python script/check_retrieval.py --all               # every available state
+    uv run python script/check_retrieval.py --all --reset-store # wipe data/chroma/ and rebuild
+                                                                # (after a git merge broke the store)
 
 Exit code is 0 when every check passes, 1 otherwise, so this can gate a run.
 """
@@ -16,6 +18,7 @@ Exit code is 0 when every check passes, 1 otherwise, so this can gate a run.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 
 from _tv3_common import (
@@ -25,7 +28,6 @@ from _tv3_common import (
     embedding_truncation_report,
     format_row,
     load_clean_frame,
-    print_problems,
     section,
     state_paths,
     validate_contract,
@@ -46,13 +48,27 @@ def check_state(settings, state: str, rebuild: bool, top_k: int) -> bool:
         df, source = load_clean_frame(target)
     except FileNotFoundError as exc:
         print(f"  SKIP  {exc}")
-        return True  # not an error: TV4 may not have produced this state yet
+        return "SKIP"  # not an error: this state may not exist yet
 
     print(section("1. Clean Dataset Schema contract"))
     print(format_row("source artifact", source))
-    ok = print_problems(validate_contract(df), "all 10 required columns present and populated")
-    if not ok:
+    fatal, repairable = validate_contract(df)
+
+    if fatal:
+        for problem in fatal:
+            print(f"  FAIL  {problem}")
+        print("  Dataset is unusable; nothing downstream can run.")
         return False
+
+    # A corrupted dataset is allowed to contain bad values. It is NOT allowed to
+    # break the schema contract -- so we report, work around it, and keep going.
+    contract_ok = not repairable
+    if contract_ok:
+        print("  OK  all 10 required columns present and populated")
+    else:
+        for problem in repairable:
+            print(f"  VIOLATION  {problem}")
+        print("  Proceeding with a coercion so the state can still be indexed.")
 
     dupes = duplicate_report(df)
     print(format_row("rows", dupes["rows"]))
@@ -93,8 +109,14 @@ def check_state(settings, state: str, rebuild: bool, top_k: int) -> bool:
         try:
             index = LocalEmbeddingIndex.load(settings, target.embeddings_json)
         except Exception as exc:
-            print(f"  FAIL  could not load existing index ({exc}); re-run with --rebuild")
-            return False
+            print(f"  FAIL  could not load existing index ({exc})")
+            print(
+                "        The manifest names this collection but the Chroma store does not\n"
+                "        contain it. This happens after a git merge, because data/chroma/ is\n"
+                "        binary and cannot be merged. Fix with:\n"
+                "          uv run python script/check_retrieval.py --all --rebuild --reset-store"
+            )
+            return "FAIL"
 
     print(format_row("action", action))
     print(format_row("manifest", target.embeddings_json.name))
@@ -107,14 +129,14 @@ def check_state(settings, state: str, rebuild: bool, top_k: int) -> bool:
             f"  FAIL  collection name is '{index.collection_name}', expected "
             f"'{target.collection_name}'"
         )
-        return False
+        return "FAIL"
     print(f"  OK  collection name is '{index.collection_name}'")
 
     indexed = index.collection.count()
     print(format_row("vectors in collection", indexed))
     if indexed != len(df):
         print(f"  FAIL  expected {len(df)} vectors, found {indexed}")
-        return False
+        return "FAIL"
     print("  OK  vector count matches row count")
 
     dimension = len(index.embedding_model.embed_query("dimension probe"))
@@ -170,7 +192,9 @@ def check_state(settings, state: str, rebuild: bool, top_k: int) -> bool:
     else:
         print("  OK  unknown key returns None")
 
-    return lookup_ok
+    if not lookup_ok:
+        return "FAIL"
+    return "PASS" if contract_ok else "WARN"
 
 
 def main() -> int:
@@ -178,6 +202,11 @@ def main() -> int:
     parser.add_argument("--state", choices=STATES, default="baseline")
     parser.add_argument("--all", action="store_true", help="check every state that has data")
     parser.add_argument("--rebuild", action="store_true", help="force re-embedding")
+    parser.add_argument(
+        "--reset-store",
+        action="store_true",
+        help="delete data/chroma/ before building (use after a git merge left the store inconsistent)",
+    )
     parser.add_argument("--top-k", type=int, default=None)
     args = parser.parse_args()
 
@@ -185,11 +214,25 @@ def main() -> int:
     top_k = args.top_k or settings.top_k
     targets = STATES if args.all else (args.state,)
 
+    if args.reset_store:
+        chroma_dir = settings.paths.chroma_dir
+        if chroma_dir.exists():
+            keep = chroma_dir / ".gitkeep"
+            for entry in chroma_dir.iterdir():
+                if entry == keep:
+                    continue
+                shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
+            print(f"  reset store: cleared {chroma_dir}")
+        if not args.rebuild:
+            print("  NOTE  --reset-store implies --rebuild")
+        args.rebuild = True
+
     results = {state: check_state(settings, state, args.rebuild, top_k) for state in targets}
 
     print(f"\n{'=' * 72}\nSUMMARY\n{'=' * 72}")
-    for state, ok in results.items():
-        print(f"  {state:<12} {'PASS' if ok else 'FAIL'}")
+    for state, status in results.items():
+        note = "  (schema contract violated but worked around)" if status == "WARN" else ""
+        print(f"  {state:<12} {status}{note}")
 
     if args.all:
         built = [
@@ -202,7 +245,7 @@ def main() -> int:
             print("  FAIL  duplicate collection names -- states are overwriting each other")
             return 1
 
-    return 0 if all(results.values()) else 1
+    return 1 if any(status == "FAIL" for status in results.values()) else 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "report_name": "corrupted",
+  "generated_at": "2026-08-06T03:53:38.230271+00:00",
+  "row_count": 22,
+  "passed": 3,
+  "failed": 3,
+  "success_rate": 0.5,
+  "checks": [
+    {
+      "name": "row_count",
+      "status": "PASS",
+      "observed": 22,
+      "threshold": 4,
+      "details": "Found 22 rows; minimum 4 required."
+    },
+    {
+      "name": "paper_id_not_null",
+      "status": "PASS",
+      "observed": 0,
+      "details": "0 rows have a missing or empty paper_id (0 null, 0 blank)."
+    },
+    {
+      "name": "paper_id_unique",
+      "status": "FAIL",
+      "observed": 3,
+      "details": "3 duplicate paper_id values found."
+    },
+    {
+      "name": "title_not_null",
+      "status": "PASS",
+      "observed": 0,
+      "details": "0 blank titles."
+    },
+    {
+      "name": "summary_length",
+      "status": "FAIL",
+      "observed": 6,
+      "threshold": 40,
+      "details": "6 summaries are shorter than 40 characters."
+    },
+    {
+      "name": "freshness",
+      "status": "FAIL",
+      "observed": 6,
+      "threshold": 180,
+      "details": "6 rows exceed the 180-day freshness threshold."
+    }
+  ]
+}
